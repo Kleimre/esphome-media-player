@@ -133,6 +133,11 @@ display:
             it.printf(12, 220, id(font_time), DIM, TextAlign::TOP_LEFT, "%d:%02d / %d:%02d", pm, ps, dm, ds);
           }
 
+          // Color test: should read RED GREEN BLUE in correct colors
+          it.printf(12, 80, id(font_artist), Color(255, 0, 0), TextAlign::TOP_LEFT, "RED");
+          it.printf(12, 100, id(font_artist), Color(0, 255, 0), TextAlign::TOP_LEFT, "GREEN");
+          it.printf(12, 120, id(font_artist), Color(0, 0, 255), TextAlign::TOP_LEFT, "BLUE");
+
           // Play state indicator
           std::string state = id(media_state).state;
           if (state == "playing") {
