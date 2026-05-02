@@ -1,0 +1,48 @@
+# =============================================================================
+# HA Artwork Proxy — paste this into your HA configuration.yaml
+# =============================================================================
+# Watches your media player's entity_picture and re-encodes it as a small
+# baseline JPEG that the ESP32 can decode without PSRAM.
+#
+# The resized artwork is served at:
+#   http://<ha_ip>:8123/local/album_art.jpg
+#
+# Requirements:
+#   - Pillow: install via "pip install Pillow" in your HA environment,
+#     or add it to your HA configuration if running supervised/container.
+#   - The /config/www/ directory must exist (create it if not).
+# =============================================================================
+
+# --- Shell command that downloads + resizes the artwork ---
+shell_command:
+  resize_album_art: >
+    python3 -c "
+    import sys, urllib.request, io
+    from PIL import Image
+    url = sys.argv[1]
+    try:
+        data = urllib.request.urlopen(url, timeout=10).read()
+        img = Image.open(io.BytesIO(data))
+        img = img.convert('RGB')
+        img.thumbnail((200, 200), Image.LANCZOS)
+        img.save('/config/www/album_art.jpg', 'JPEG', quality=70, progressive=False)
+    except Exception as e:
+        print(f'Error: {e}', file=sys.stderr)
+    " "{{ url }}"
+
+
+# --- Automation that triggers on artwork change ---
+automation:
+  - alias: "Resize album art for ESP32 display"
+    id: resize_album_art_for_esp32
+    trigger:
+      - platform: state
+        entity_id: media_player.wiim_ma900
+        attribute: entity_picture
+    condition:
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.entity_picture is defined and trigger.to_state.attributes.entity_picture != '' }}"
+    action:
+      - service: shell_command.resize_album_art
+        data:
+          url: "http://127.0.0.1:8123{{ state_attr('media_player.wiim_ma900', 'entity_picture') }}"

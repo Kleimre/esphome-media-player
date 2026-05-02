@@ -39,11 +39,6 @@ wifi:
 
 captive_portal:
 
-external_components:
-  - source: github://jtenniswood/esphome-media-player@main
-    components: [artwork_image]
-    refresh: 1d
-
 http_request:
   verify_ssl: false
 
@@ -251,17 +246,16 @@ text_sensor:
               id(last_art_url) = "";
               return;
             }
-            std::string url = x;
-            if (url.rfind("http", 0) != 0) {
-              url = id(ha_base_url) + url;
-            }
-            if (url == id(last_art_url)) return;
-            id(last_art_url) = url;
+            // Skip if same artwork
+            if (x == id(last_art_url)) return;
+            id(last_art_url) = x;
             id(art_loaded) = false;
-        - delay: 50ms
-        - artwork_image.set_url:
-            id: album_art
-            url: !lambda 'return id(last_art_url);'
+        # Give HA automation time to resize the image
+        - delay: 2s
+        - lambda: |-
+            std::string url = id(ha_base_url) + "/local/album_art.jpg";
+            id(album_art).set_url(url.c_str());
+            id(album_art).update();
 
 sensor:
   - platform: homeassistant
@@ -305,15 +299,15 @@ script:
 
 
 # -----------------------------------------------------------------------------
-# ALBUM ART (artwork_image supports progressive JPEG via libjpeg-turbo)
+# ALBUM ART (fetches pre-resized baseline JPEG from HA /local/album_art.jpg)
 # -----------------------------------------------------------------------------
-artwork_image:
-  - url: "https://placehold.co/160x160/111111/333333.jpg"
+online_image:
+  - url: "http://placeholder.invalid/placeholder.jpg"
     id: album_art
-    format: AUTO
+    format: jpeg
     type: RGB565
-    resize: 160x160
-    buffer_size: 16384
+    resize: 200x200
+    update_interval: never
     on_download_finished:
       then:
         - lambda: 'id(art_loaded) = true;'
