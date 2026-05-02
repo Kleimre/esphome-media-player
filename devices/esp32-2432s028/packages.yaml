@@ -1,0 +1,50 @@
+substitutions:
+  # Display rotation in degrees: 0, 90, 180, or 270
+  # Rotate to match your preferred mounting orientation / power cable direction
+  display_rotation: "0"
+
+  # Device profile
+  screen_width: "320"
+  screen_height: "240"
+  artwork_size: "240"
+  artwork_display_size: "240"
+  clock_cx: "160"
+  clock_cy: "120"
+  device_slug: "esp32-2432s028"
+  firmware_manifest_slug: "2432s028"
+  post_artwork_script: "start_hide_track_info_timer"
+  track_info_duration_default: "5"
+  pause_lvgl_on_screen_off: "true"
+  clock_screensaver_supported: "true"
+  idle_action_default: "Clock"
+
+  # Memory-constrained: no PSRAM on this board
+  artwork_image_buffer_size: "32768"
+
+  # Setup screens (scaled for 320x240)
+  setup_content_width: "280"
+  setup_pad_row: "8"
+  setup_instructions_pad_top: "4"
+  setup_icon_font: "$icon_font"
+  setup_button_width: "120"
+  setup_button_height: "32"
+  setup_button_radius: "16"
+  setup_button_font: "roboto12_font"
+  loading_pad_row: "8"
+  loading_bar_width: "50"
+  loading_bar_height: "3"
+  loading_bar_radius: "2"
+  loading_bar_pad_top: "12"
+
+packages:
+  # Common
+  base: !include ../../common/device/base.yaml
+  web_settings: !include ../../common/addon/web_settings.yaml
+
+  # Device-specific
+  device: !include device/device.yaml
+  web_activity: !include device/web_activity.yaml
+  lvgl: !include device/lvgl.yaml
+  fonts: !include assets/fonts.yaml
+  icons: !include assets/icons.yaml
+  button: !include theme/button.yaml
