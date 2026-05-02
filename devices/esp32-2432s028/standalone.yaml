@@ -300,6 +300,7 @@ online_image:
     id: album_art
     format: jpeg
     type: RGB565
+    byte_order: big_endian
     update_interval: never
     on_download_finished:
       then:
