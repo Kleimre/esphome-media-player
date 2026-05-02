@@ -1,0 +1,536 @@
+# =============================================================================
+# ESP32-2432S028 — Minimal Now-Playing Display
+# =============================================================================
+# Album artwork background with song title and artist overlay.
+# Stripped down for ESP32 without PSRAM (~520KB SRAM).
+# =============================================================================
+
+substitutions:
+  name: "music-dashboard"
+  friendly_name: "Music Dashboard"
+  artwork_size: "160"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  hardware_uart: UART0
+
+api:
+  on_client_connected:
+    - lambda: |-
+        if (client_info.find("Home Assistant") != std::string::npos) {
+          id(ha_base_url) = "http://" + client_address + ":8123";
+          id(ha_connected) = true;
+        }
+    - script.execute: subscribe_media_player
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+
+captive_portal:
+
+
+# -----------------------------------------------------------------------------
+# EXTERNAL COMPONENTS
+# -----------------------------------------------------------------------------
+external_components:
+  - source: github://jtenniswood/esphome-media-player@main
+    components: [artwork_image]
+    refresh: 1d
+
+http_request:
+  id: http_req
+  verify_ssl: false
+
+
+# -----------------------------------------------------------------------------
+# HARDWARE
+# -----------------------------------------------------------------------------
+spi:
+  - id: display_spi
+    clk_pin: GPIO14
+    mosi_pin: GPIO13
+    miso_pin: GPIO12
+  - id: touch_spi
+    clk_pin: GPIO25
+    mosi_pin: GPIO32
+    miso_pin: GPIO39
+
+output:
+  - platform: ledc
+    id: backlight_output
+    pin: GPIO21
+    frequency: 150Hz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: backlight_output
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+
+display:
+  - platform: mipi_spi
+    model: ILI9342
+    id: my_display
+    spi_id: display_spi
+    cs_pin:
+      number: GPIO15
+      ignore_strapping_warning: true
+    dc_pin:
+      number: GPIO2
+      ignore_strapping_warning: true
+    reset_pin: GPIO0
+    color_order: BGR
+    invert_colors: false
+    dimensions:
+      height: 240
+      width: 320
+    update_interval: never
+    auto_clear_enabled: false
+
+touchscreen:
+  - platform: xpt2046
+    id: tft_touch
+    display: my_display
+    spi_id: touch_spi
+    cs_pin: GPIO33
+    interrupt_pin: GPIO36
+    threshold: 400
+    calibration:
+      x_min: 280
+      x_max: 3850
+      y_min: 340
+      y_max: 3850
+    on_touch:
+      - lambda: |-
+          id(touch_x_start) = touch.x;
+          id(touch_y_start) = touch.y;
+    on_update:
+      - lambda: |-
+          for (auto touch: touches) {
+            if (touch.state <= 2) {
+              id(touch_x_end) = touch.x;
+              id(touch_y_end) = touch.y;
+            }
+          }
+    on_release:
+      - lambda: |-
+          int dx = id(touch_x_end) - id(touch_x_start);
+          int dy = id(touch_y_end) - id(touch_y_start);
+          std::string entity = id(media_player_entity).state;
+          if (entity.empty()) return;
+          // Tap: play/pause
+          if (abs(dx) < 20 && abs(dy) < 20) {
+            id(do_play_pause).execute();
+          }
+          // Swipe left: next track
+          else if (dx < -50 && abs(dx) > abs(dy) * 2) {
+            id(do_next_track).execute();
+          }
+          // Swipe right: previous track
+          else if (dx > 50 && abs(dx) > abs(dy) * 2) {
+            id(do_prev_track).execute();
+          }
+
+
+# -----------------------------------------------------------------------------
+# GLOBALS
+# -----------------------------------------------------------------------------
+globals:
+  - id: ha_base_url
+    type: std::string
+    initial_value: '"http://homeassistant.local:8123"'
+  - id: ha_connected
+    type: bool
+    initial_value: 'false'
+  - id: touch_x_start
+    type: int
+    initial_value: '0'
+  - id: touch_y_start
+    type: int
+    initial_value: '0'
+  - id: touch_x_end
+    type: int
+    initial_value: '0'
+  - id: touch_y_end
+    type: int
+    initial_value: '0'
+  - id: last_artwork_url
+    type: std::string
+    initial_value: '""'
+
+
+# -----------------------------------------------------------------------------
+# MEDIA PLAYER ENTITY SELECT
+# -----------------------------------------------------------------------------
+text:
+  - platform: template
+    name: "Media Player"
+    id: media_player_entity
+    optimistic: true
+    min_length: 0
+    max_length: 100
+    mode: text
+    restore_value: true
+    icon: "mdi:cast-audio"
+    on_value:
+      - script.execute: subscribe_media_player
+
+
+# -----------------------------------------------------------------------------
+# HA SENSORS
+# -----------------------------------------------------------------------------
+text_sensor:
+  - platform: template
+    id: media_title_sensor
+    internal: true
+  - platform: template
+    id: media_artist_sensor
+    internal: true
+  - platform: template
+    id: media_state_sensor
+    internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: 'return x == "playing";'
+          then:
+            - lvgl.widget.hide: media_play_icon
+            - lvgl.widget.show: media_pause_icon
+          else:
+            - lvgl.widget.show: media_play_icon
+            - lvgl.widget.hide: media_pause_icon
+  - platform: template
+    id: media_entity_picture_sensor
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x.empty()) return;
+          std::string path = x;
+          while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ')) path.pop_back();
+          std::string url = (path.substr(0, 7) == "http://" || path.substr(0, 8) == "https://") ? path : (id(ha_base_url) + path);
+          if (url == id(last_artwork_url)) return;
+          id(last_artwork_url) = url;
+      - delay: 50ms
+      - artwork_image.set_url:
+          id: album_art
+          url: !lambda 'return id(last_artwork_url);'
+
+sensor:
+  - platform: template
+    id: media_duration_sensor
+    internal: true
+  - platform: template
+    id: media_position_sensor
+    internal: true
+
+
+# -----------------------------------------------------------------------------
+# SUBSCRIBE TO HA MEDIA PLAYER
+# -----------------------------------------------------------------------------
+script:
+  - id: subscribe_media_player
+    mode: restart
+    then:
+      - lambda: |-
+          std::string entity = id(media_player_entity).state;
+          if (entity.empty() || !id(ha_connected)) return;
+          // Title
+          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_title"),
+            [](const std::string &val) {
+              id(media_title_sensor).publish_state(val);
+              lv_label_set_text(id(title_label), val.empty() ? "\xe2\x80\x94" : val.c_str());
+            });
+          // Artist
+          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_artist"),
+            [](const std::string &val) {
+              id(media_artist_sensor).publish_state(val);
+              lv_label_set_text(id(artist_label), val.c_str());
+              if (val.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+              else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+            });
+          // State
+          api::global_api_server->subscribe_home_assistant_state(entity, {},
+            [](const std::string &val) {
+              id(media_state_sensor).publish_state(val);
+            });
+          // Entity picture
+          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("entity_picture"),
+            [](const std::string &val) {
+              id(media_entity_picture_sensor).publish_state(val);
+            });
+          // Duration
+          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_duration"),
+            [](const std::string &val) {
+              if (!val.empty()) id(media_duration_sensor).publish_state(atof(val.c_str()));
+            });
+          // Position
+          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_position"),
+            [](const std::string &val) {
+              if (!val.empty()) id(media_position_sensor).publish_state(atof(val.c_str()));
+            });
+
+  - id: do_play_pause
+    mode: single
+    then:
+      - homeassistant.service:
+          service: media_player.media_play_pause
+          data_template:
+            entity_id: !lambda 'return id(media_player_entity).state;'
+  - id: do_next_track
+    mode: single
+    then:
+      - homeassistant.service:
+          service: media_player.media_next_track
+          data_template:
+            entity_id: !lambda 'return id(media_player_entity).state;'
+  - id: do_prev_track
+    mode: single
+    then:
+      - homeassistant.service:
+          service: media_player.media_previous_track
+          data_template:
+            entity_id: !lambda 'return id(media_player_entity).state;'
+
+  - id: update_progress
+    mode: restart
+    then:
+      - lambda: |-
+          float dur = id(media_duration_sensor).state;
+          float pos = id(media_position_sensor).state;
+          if (isnan(dur) || isnan(pos) || dur <= 0) return;
+          int pct = (int)(pos / dur * 100.0f);
+          if (pct < 0) pct = 0;
+          if (pct > 100) pct = 100;
+          lv_bar_set_value(id(progress_bar), pct, LV_ANIM_OFF);
+          // Time label
+          int pm = (int)pos / 60; int ps = (int)pos % 60;
+          int dm = (int)dur / 60; int ds = (int)dur % 60;
+          char buf[20];
+          snprintf(buf, sizeof(buf), "%d:%02d / %d:%02d", pm, ps, dm, ds);
+          lv_label_set_text(id(time_label), buf);
+
+
+# -----------------------------------------------------------------------------
+# UPDATE TIMER
+# -----------------------------------------------------------------------------
+interval:
+  - interval: 1s
+    then:
+      - script.execute: update_progress
+
+
+# -----------------------------------------------------------------------------
+# ARTWORK IMAGE
+# -----------------------------------------------------------------------------
+image:
+  - file: "https://raw.githubusercontent.com/jtenniswood/esphome-media-player/main/common/assets/placeholder.png"
+    id: album_art_placeholder
+    type: RGB565
+
+artwork_image:
+  - url: "https://placehold.co/${artwork_size}x${artwork_size}/111111/333333.jpg"
+    id: album_art
+    format: AUTO
+    type: RGB565
+    placeholder: album_art_placeholder
+    resize: ${artwork_size}x${artwork_size}
+    buffer_size: 16384
+    on_download_finished:
+      - lambda: |-
+          auto *img = id(album_art);
+          int iw = img->get_width();
+          int ih = img->get_height();
+          auto *w = id(art_widget);
+          lv_img_set_zoom(w, 256);
+          lv_obj_set_size(w, iw, ih);
+          lv_obj_set_pos(w, (320 - iw) / 2, (240 - ih) / 2);
+      - lvgl.image.update:
+          id: art_widget
+          src: album_art
+      - lvgl.widget.update:
+          id: art_widget
+          opa: 100%
+    on_error:
+      - lvgl.image.update:
+          id: art_widget
+          src: album_art_placeholder
+
+
+# -----------------------------------------------------------------------------
+# FONTS
+# -----------------------------------------------------------------------------
+font:
+  - file: "gfonts://Roboto@Light"
+    id: title_font
+    size: 28
+    bpp: 4
+    glyphs: >-
+      !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ ¡¿·ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿŒœŠšŸŽž—–…µ©®™°•€£¥¢
+
+  - file: "gfonts://Roboto@Light"
+    id: artist_font
+    size: 18
+    bpp: 4
+    glyphs: >-
+      !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ ¡¿·ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿŒœŠšŸŽž—–…µ©®™°•€£¥¢
+
+  - file: "gfonts://Roboto"
+    id: time_font
+    size: 14
+    bpp: 4
+    glyphs: " 0123456789:/-"
+
+  - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf'
+    id: icon_font
+    size: 28
+    bpp: 4
+    glyphs:
+      - "\U000F040A"  # play
+      - "\U000F03E4"  # pause
+
+
+# -----------------------------------------------------------------------------
+# LVGL — Minimal now-playing layout
+# -----------------------------------------------------------------------------
+lvgl:
+  buffer_size: 10%
+
+  style_definitions:
+    - id: play_btn_style
+      bg_color: 0x313131
+      radius: 24px
+
+  pages:
+    - id: main_page
+      scrollbar_mode: "off"
+      scrollable: false
+      width: 100%
+      height: 100%
+      bg_color: 0x000000
+
+      widgets:
+        # Artwork background
+        - image:
+            id: art_widget
+            align: center
+            width: 160px
+            height: 160px
+            src: album_art_placeholder
+            opa: 50%
+
+        # Dark overlay
+        - obj:
+            id: overlay
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x000000
+            bg_opa: 70%
+            radius: 0
+            border_width: 0
+            scrollable: false
+            clickable: false
+
+        # Track info
+        - obj:
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_opa: 0%
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            pad_top: 12
+            pad_bottom: 10
+            scrollable: false
+            clickable: false
+            layout:
+              type: flex
+              flex_flow: COLUMN
+              pad_row: 0
+            widgets:
+              - label:
+                  id: title_label
+                  text: "—"
+                  width: 100%
+                  max_height: 150px
+                  long_mode: wrap
+                  text_font: title_font
+                  text_color: 0xFFFFFF
+                  text_line_space: 0
+              - label:
+                  id: artist_label
+                  text: ""
+                  pad_top: 4
+                  width: 100%
+                  long_mode: dot
+                  text_font: artist_font
+                  text_color: 0xFFFFFF
+                  text_opa: 80%
+                  hidden: true
+              - label:
+                  id: time_label
+                  text: ""
+                  pad_top: 8
+                  width: 100%
+                  text_font: time_font
+                  text_color: 0xFFFFFF
+                  text_opa: 70%
+
+        # Play/pause button
+        - button:
+            align: bottom_right
+            x: -10
+            y: -14
+            width: 48px
+            height: 48px
+            styles: play_btn_style
+            widgets:
+              - label:
+                  id: media_play_icon
+                  text_font: icon_font
+                  align: center
+                  text: "\U000F040A"
+                  text_color: 0xFFFFFF
+              - label:
+                  id: media_pause_icon
+                  text_font: icon_font
+                  align: center
+                  text: "\U000F03E4"
+                  text_color: 0xFFFFFF
+                  hidden: true
+            on_press:
+              - script.execute: do_play_pause
+
+        # Progress bar
+        - bar:
+            id: progress_bar
+            align: bottom_mid
+            y: 0
+            width: 320
+            height: 3
+            bg_color: 0x000000
+            bg_opa: 50%
+            radius: 0
+            min_value: 0
+            max_value: 100
+            value: 0
+            indicator:
+              bg_color: 0xFFFFFF
+              radius: 0
