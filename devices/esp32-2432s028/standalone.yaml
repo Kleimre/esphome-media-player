@@ -1,8 +1,9 @@
 # =============================================================================
-# ESP32-2432S028 — Now-Playing Display (no LVGL)
+# ESP32-2432S028 — Now-Playing Display (minimal LVGL)
 # =============================================================================
 # Album artwork background with song title and artist overlay.
-# Uses display lambdas + online_image for minimal RAM usage on no-PSRAM ESP32.
+# Uses LVGL with 10% partial buffer (15KB) instead of display lambdas
+# (153KB full framebuffer), freeing ~138KB for larger artwork.
 # =============================================================================
 
 substitutions:
@@ -88,60 +89,8 @@ display:
     dimensions:
       height: 240
       width: 320
-    update_interval: 1s
-    pages:
-      - id: now_playing
-        lambda: |-
-          auto BLACK = Color(0, 0, 0);
-          auto WHITE = Color(255, 255, 255);
-          auto GREY  = Color(160, 160, 160);
-          auto DIM   = Color(100, 100, 100);
-          auto ACCENT = Color(255, 180, 0);
-
-          it.fill(BLACK);
-
-          // Album art centered
-          if (id(art_loaded)) {
-            int iw = id(album_art).get_width();
-            int ih = id(album_art).get_height();
-            it.image((320 - iw) / 2, (240 - ih) / 2, id(album_art));
-          }
-
-          // Title
-          std::string title = id(media_title).state;
-          if (title.empty()) title = "\xe2\x80\x94";
-          it.printf(12, 12, id(font_title), WHITE, TextAlign::TOP_LEFT, "%s", title.c_str());
-
-          // Artist
-          if (!id(media_artist).state.empty()) {
-            it.printf(12, 48, id(font_artist), GREY, TextAlign::TOP_LEFT, "%s", id(media_artist).state.c_str());
-          }
-
-          // Time and progress bar
-          if (!isnan(id(media_position).state) && !isnan(id(media_duration).state) && id(media_duration).state > 0) {
-            float pos = id(media_position).state;
-            float dur = id(media_duration).state;
-            float pct = pos / dur;
-            if (pct < 0) pct = 0;
-            if (pct > 1) pct = 1;
-
-            // Progress bar at bottom
-            it.filled_rectangle(0, 236, 320, 4, Color(40, 40, 40));
-            it.filled_rectangle(0, 236, (int)(320 * pct), 4, WHITE);
-
-            // Time text
-            int pm = (int)pos / 60, ps = (int)pos % 60;
-            int dm = (int)dur / 60, ds = (int)dur % 60;
-            it.printf(12, 220, id(font_time), DIM, TextAlign::TOP_LEFT, "%d:%02d / %d:%02d", pm, ps, dm, ds);
-          }
-
-          // Play state indicator
-          std::string state = id(media_state).state;
-          if (state == "playing") {
-            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, "||");
-          } else if (state == "paused") {
-            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, ">");
-          }
+    update_interval: never
+    auto_clear_enabled: false
 
 touchscreen:
   - platform: xpt2046
@@ -217,17 +166,36 @@ text_sensor:
     attribute: media_title
     id: media_title
     internal: true
+    on_value:
+      - lvgl.label.update:
+          id: title_label
+          text: !lambda 'return x.empty() ? std::string("\xe2\x80\x94") : x;'
 
   - platform: homeassistant
     entity_id: ${media_entity}
     attribute: media_artist
     id: media_artist
     internal: true
+    on_value:
+      - lambda: |-
+          lv_label_set_text(id(artist_label), x.c_str());
+          if (x.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
 
   - platform: homeassistant
     entity_id: ${media_entity}
     id: media_state
     internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: 'return x == "playing";'
+          then:
+            - lvgl.widget.hide: play_icon
+            - lvgl.widget.show: pause_icon
+          else:
+            - lvgl.widget.show: play_icon
+            - lvgl.widget.hide: pause_icon
 
   - platform: homeassistant
     entity_id: ${media_entity}
@@ -242,11 +210,9 @@ text_sensor:
               id(last_art_url) = "";
               return;
             }
-            // Skip if same artwork
             if (x == id(last_art_url)) return;
             id(last_art_url) = x;
             id(art_loaded) = false;
-        # Give HA automation time to resize the image
         - delay: 2s
         - lambda: |-
             std::string url = id(ha_base_url) + "/local/album_art.jpg";
@@ -293,9 +259,32 @@ script:
           data:
             entity_id: ${media_entity}
 
+  - id: update_progress
+    mode: restart
+    then:
+      - lambda: |-
+          if (!id(media_duration).has_state() || !id(media_position).has_state()) return;
+          float dur = id(media_duration).state;
+          float pos = id(media_position).state;
+          if (isnan(dur) || isnan(pos) || dur <= 0) return;
+          int pct = (int)(pos / dur * 100.0f);
+          if (pct < 0) pct = 0;
+          if (pct > 100) pct = 100;
+          lv_bar_set_value(id(progress_bar), pct, LV_ANIM_OFF);
+          int pm = (int)pos / 60; int ps = (int)pos % 60;
+          int dm = (int)dur / 60; int ds = (int)dur % 60;
+          char buf[20];
+          snprintf(buf, sizeof(buf), "%d:%02d / %d:%02d", pm, ps, dm, ds);
+          lv_label_set_text(id(time_label), buf);
+
+interval:
+  - interval: 1s
+    then:
+      - script.execute: update_progress
+
 
 # -----------------------------------------------------------------------------
-# ALBUM ART (fetches pre-resized baseline JPEG from HA /local/album_art.jpg)
+# ALBUM ART
 # -----------------------------------------------------------------------------
 online_image:
   - url: "http://placeholder.invalid/placeholder.jpg"
@@ -305,33 +294,174 @@ online_image:
     update_interval: never
     on_download_finished:
       then:
-        - lambda: 'id(art_loaded) = true;'
-        - component.update: my_display
+        - lambda: |-
+            id(art_loaded) = true;
+            auto *w = id(art_widget);
+            lv_obj_clear_flag(w, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_invalidate(w);
+        - lvgl.image.update:
+            id: art_widget
+            src: album_art
     on_error:
       then:
         - lambda: 'id(art_loaded) = false;'
-        - component.update: my_display
 
 
 # -----------------------------------------------------------------------------
 # FONTS
 # -----------------------------------------------------------------------------
 font:
-  - file: "gfonts://Roboto"
-    id: font_title
-    size: 24
+  - file: "gfonts://Roboto@Light"
+    id: title_font
+    size: 28
+    bpp: 4
     glyphs: >-
       !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿŒœŠšŸŽž—–…°•€£¥¢
-  - file: "gfonts://Roboto"
-    id: font_artist
+
+  - file: "gfonts://Roboto@Light"
+    id: artist_font
     size: 18
+    bpp: 4
     glyphs: >-
       !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿŒœŠšŸŽž—–…°•€£¥¢
+
   - file: "gfonts://Roboto"
-    id: font_time
+    id: time_font
     size: 14
+    bpp: 4
     glyphs: " 0123456789:/-"
-  - file: "gfonts://Roboto"
-    id: font_state
-    size: 24
-    glyphs: ">|"
+
+  - file: 'https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf'
+    id: icon_font
+    size: 28
+    bpp: 4
+    glyphs:
+      - "\U000F040A"  # play
+      - "\U000F03E4"  # pause
+
+
+# -----------------------------------------------------------------------------
+# LVGL — Minimal layout
+# -----------------------------------------------------------------------------
+lvgl:
+  buffer_size: 10%
+
+  pages:
+    - id: main_page
+      scrollbar_mode: "off"
+      scrollable: false
+      width: 100%
+      height: 100%
+      bg_color: 0x000000
+
+      widgets:
+        # Artwork (centered, hidden until loaded)
+        - image:
+            id: art_widget
+            align: center
+            src: album_art
+            hidden: true
+
+        # Dark overlay for text readability
+        - obj:
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_color: 0x000000
+            bg_opa: 60%
+            radius: 0
+            border_width: 0
+            scrollable: false
+            clickable: false
+
+        # Track info
+        - obj:
+            x: 0
+            y: 0
+            width: 320
+            height: 240
+            bg_opa: 0%
+            border_width: 0
+            pad_left: 12
+            pad_right: 12
+            pad_top: 12
+            pad_bottom: 10
+            scrollable: false
+            clickable: false
+            layout:
+              type: flex
+              flex_flow: COLUMN
+              pad_row: 0
+            widgets:
+              - label:
+                  id: title_label
+                  text: "—"
+                  width: 100%
+                  max_height: 150px
+                  long_mode: wrap
+                  text_font: title_font
+                  text_color: 0xFFFFFF
+                  text_line_space: 0
+              - label:
+                  id: artist_label
+                  text: ""
+                  pad_top: 4
+                  width: 100%
+                  long_mode: dot
+                  text_font: artist_font
+                  text_color: 0xFFFFFF
+                  text_opa: 80%
+                  hidden: true
+              - label:
+                  id: time_label
+                  text: ""
+                  pad_top: 8
+                  width: 100%
+                  text_font: time_font
+                  text_color: 0xFFFFFF
+                  text_opa: 70%
+
+        # Play/pause button
+        - button:
+            align: bottom_right
+            x: -10
+            y: -14
+            width: 48px
+            height: 48px
+            radius: 24
+            bg_color: 0x313131
+            shadow_width: 0
+            widgets:
+              - label:
+                  id: play_icon
+                  text_font: icon_font
+                  align: center
+                  text: "\U000F040A"
+                  text_color: 0xFFFFFF
+              - label:
+                  id: pause_icon
+                  text_font: icon_font
+                  align: center
+                  text: "\U000F03E4"
+                  text_color: 0xFFFFFF
+                  hidden: true
+            on_press:
+              - script.execute: do_play_pause
+
+        # Progress bar
+        - bar:
+            id: progress_bar
+            align: bottom_mid
+            y: 0
+            width: 320
+            height: 3
+            bg_color: 0x000000
+            bg_opa: 50%
+            radius: 0
+            min_value: 0
+            max_value: 100
+            value: 0
+            indicator:
+              bg_color: 0xFFFFFF
+              radius: 0
