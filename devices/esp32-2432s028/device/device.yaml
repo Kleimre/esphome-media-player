@@ -212,10 +212,12 @@ touchscreen:
     spi_id: touch_spi
     cs_pin: GPIO33
     interrupt_pin: GPIO36
-    calibration_x_min: 280
-    calibration_x_max: 3850
-    calibration_y_min: 340
-    calibration_y_max: 3850
+    threshold: 400
+    calibration:
+      x_min: 280
+      x_max: 3850
+      y_min: 340
+      y_max: 3850
     on_touch:
       - lambda: |-
           id(was_screen_dimmed) = id(is_screen_dimmed);
