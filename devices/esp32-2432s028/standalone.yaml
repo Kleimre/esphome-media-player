@@ -102,7 +102,9 @@ display:
 
           // Album art centered
           if (id(art_loaded)) {
-            it.image(80, 20, id(album_art));
+            int iw = id(album_art).get_width();
+            int ih = id(album_art).get_height();
+            it.image((320 - iw) / 2, (240 - ih) / 2, id(album_art));
           }
 
           // Title
