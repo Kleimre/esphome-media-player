@@ -39,6 +39,11 @@ wifi:
 
 captive_portal:
 
+external_components:
+  - source: github://jtenniswood/esphome-media-player@main
+    components: [artwork_image]
+    refresh: 1d
+
 http_request:
   verify_ssl: false
 
@@ -253,8 +258,10 @@ text_sensor:
             if (url == id(last_art_url)) return;
             id(last_art_url) = url;
             id(art_loaded) = false;
-            id(album_art).set_url(url.c_str());
-            id(album_art).update();
+        - delay: 50ms
+        - artwork_image.set_url:
+            id: album_art
+            url: !lambda 'return id(last_art_url);'
 
 sensor:
   - platform: homeassistant
@@ -298,15 +305,15 @@ script:
 
 
 # -----------------------------------------------------------------------------
-# ALBUM ART
+# ALBUM ART (artwork_image supports progressive JPEG via libjpeg-turbo)
 # -----------------------------------------------------------------------------
-online_image:
-  - url: "http://placeholder.invalid/placeholder.jpg"
+artwork_image:
+  - url: "https://placehold.co/160x160/111111/333333.jpg"
     id: album_art
-    format: jpeg
+    format: AUTO
     type: RGB565
-    resize: 160x200
-    update_interval: never
+    resize: 160x160
+    buffer_size: 16384
     on_download_finished:
       then:
         - lambda: 'id(art_loaded) = true;'
