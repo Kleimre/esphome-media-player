@@ -83,7 +83,7 @@ display:
       number: GPIO2
       ignore_strapping_warning: true
     reset_pin: GPIO0
-    color_order: BGR
+    color_order: RGB
     invert_colors: false
     dimensions:
       height: 240
@@ -301,7 +301,6 @@ online_image:
     format: jpeg
     type: RGB565
     update_interval: never
-    byte_order: big_endian
     on_download_finished:
       then:
         - lambda: 'id(art_loaded) = true;'
