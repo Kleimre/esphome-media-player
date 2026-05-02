@@ -105,14 +105,6 @@ display:
             it.image(80, 20, id(album_art));
           }
 
-          // Dark overlay for text readability
-          for (int y = 0; y < 240; y++) {
-            for (int x = 0; x < 320; x++) {
-              // Skip if no art loaded (already black)
-              if (!id(art_loaded)) break;
-            }
-          }
-
           // Title
           std::string title = id(media_title).state;
           if (title.empty()) title = "\xe2\x80\x94";
@@ -309,6 +301,7 @@ online_image:
     format: jpeg
     type: RGB565
     update_interval: never
+    byte_order: big_endian
     on_download_finished:
       then:
         - lambda: 'id(art_loaded) = true;'
