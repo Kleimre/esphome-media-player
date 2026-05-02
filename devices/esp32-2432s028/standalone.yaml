@@ -85,7 +85,6 @@ display:
     reset_pin: GPIO0
     color_order: BGR
     invert_colors: false
-    byte_order: little_endian
     dimensions:
       height: 240
       width: 320
