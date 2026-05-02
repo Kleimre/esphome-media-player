@@ -1,8 +1,29 @@
 # =============================================================================
-# ESP32-2432S028 — Now-Playing Display (no LVGL)
+# ESP32-2432S028 (CYD 2.8") — Now-Playing Display
 # =============================================================================
-# Album artwork background with song title and artist overlay.
-# Uses display lambdas + online_image for minimal RAM usage on no-PSRAM ESP32.
+# Album artwork background with song title, artist, progress bar overlay.
+# Touch: tap = play/pause, swipe left/right = skip track.
+#
+# Hardware: ESP32-WROOM-32 (320KB RAM, no PSRAM), ILI9341 320x240 TFT,
+#           XPT2046 resistive touch. Display model confirmed ILI9341
+#           (not ILI9342 despite datasheet — ILI9342 has image color issues).
+#
+# Max artwork: 175x175 (limited by 65KB largest free heap block).
+# Requires HA-side artwork proxy (resize_art.py) to convert progressive
+# JPEGs to small baseline JPEGs the ESP32 can decode.
+#
+# Usage — paste into ESPHome dashboard:
+#   substitutions:
+#     media_entity: "media_player.your_player"
+#   packages:
+#     display:
+#       url: https://github.com/Kleimre/esphome-media-player
+#       files: [devices/esp32-2432s028/standalone.yaml]
+#       ref: main
+#       refresh: 1s
+#   wifi:
+#     ssid: !secret wifi_ssid
+#     password: !secret wifi_password
 # =============================================================================
 
 substitutions:
