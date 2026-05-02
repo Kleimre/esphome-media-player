@@ -3,12 +3,15 @@
 # =============================================================================
 # Album artwork background with song title and artist overlay.
 # Stripped down for ESP32 without PSRAM (~520KB SRAM).
+#
+# Set your media player entity in substitutions below.
 # =============================================================================
 
 substitutions:
   name: "music-dashboard"
   friendly_name: "Music Dashboard"
   artwork_size: "160"
+  media_entity: "media_player.wiim_ma900"
 
 esphome:
   name: ${name}
@@ -26,10 +29,9 @@ api:
   on_client_connected:
     - lambda: |-
         if (client_info.find("Home Assistant") != std::string::npos) {
+          std::string host = "homeassistant.local";
           id(ha_base_url) = "http://" + client_address + ":8123";
-          id(ha_connected) = true;
         }
-    - script.execute: subscribe_media_player
 
 ota:
   - platform: esphome
@@ -130,8 +132,6 @@ touchscreen:
       - lambda: |-
           int dx = id(touch_x_end) - id(touch_x_start);
           int dy = id(touch_y_end) - id(touch_y_start);
-          std::string entity = id(media_player_entity).state;
-          if (entity.empty()) return;
           // Tap: play/pause
           if (abs(dx) < 20 && abs(dy) < 20) {
             id(do_play_pause).execute();
@@ -153,9 +153,6 @@ globals:
   - id: ha_base_url
     type: std::string
     initial_value: '"http://homeassistant.local:8123"'
-  - id: ha_connected
-    type: bool
-    initial_value: 'false'
   - id: touch_x_start
     type: int
     initial_value: '0'
@@ -174,45 +171,32 @@ globals:
 
 
 # -----------------------------------------------------------------------------
-# MEDIA PLAYER ENTITY SELECT
-# -----------------------------------------------------------------------------
-text:
-  - platform: template
-    name: "Media Player"
-    id: media_player_entity
-    optimistic: true
-    min_length: 0
-    max_length: 100
-    mode: text
-    restore_value: true
-    icon: "mdi:cast-audio"
-    on_value:
-      - script.execute: subscribe_media_player
-      - delay: 500ms
-      - if:
-          condition:
-            lambda: |-
-              std::string entity = id(media_player_entity).state;
-              return !entity.empty()
-                  && entity.substr(0, 13) == "media_player."
-                  && esphome::api::global_api_server != nullptr
-                  && esphome::api::global_api_server->is_connected();
-          then:
-            - delay: 200ms
-            - lambda: 'App.safe_reboot();'
-
-
-# -----------------------------------------------------------------------------
-# HA SENSORS
+# HA SENSORS (static entity via substitution)
 # -----------------------------------------------------------------------------
 text_sensor:
-  - platform: template
+  - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: media_title
     id: media_title_sensor
     internal: true
-  - platform: template
+    on_value:
+      - lvgl.label.update:
+          id: title_label
+          text: !lambda 'return x.empty() ? std::string("\xe2\x80\x94") : x;'
+
+  - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: media_artist
     id: media_artist_sensor
     internal: true
-  - platform: template
+    on_value:
+      - lambda: |-
+          lv_label_set_text(id(artist_label), x.c_str());
+          if (x.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+          else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+
+  - platform: homeassistant
+    entity_id: ${media_entity}
     id: media_state_sensor
     internal: true
     on_value:
@@ -225,7 +209,10 @@ text_sensor:
           else:
             - lvgl.widget.show: media_play_icon
             - lvgl.widget.hide: media_pause_icon
-  - platform: template
+
+  - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: entity_picture
     id: media_entity_picture_sensor
     internal: true
     on_value:
@@ -242,100 +229,50 @@ text_sensor:
           url: !lambda 'return id(last_artwork_url);'
 
 sensor:
-  - platform: template
+  - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: media_duration
     id: media_duration_sensor
     internal: true
-  - platform: template
+
+  - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: media_position
     id: media_position_sensor
     internal: true
 
 
 # -----------------------------------------------------------------------------
-# SUBSCRIBE TO HA MEDIA PLAYER
+# SCRIPTS
 # -----------------------------------------------------------------------------
 script:
-  - id: subscribe_media_player
-    mode: restart
-    then:
-      - lambda: |-
-          auto *api = esphome::api::global_api_server;
-          if (api == nullptr) return;
-          std::string entity = id(media_player_entity).state;
-          if (entity.empty() || !id(ha_connected)) return;
-
-          using state_cb = std::function<void(esphome::StringRef)>;
-
-          auto sub_text = [&](const std::string &attr, esphome::text_sensor::TextSensor *sensor) {
-            api->subscribe_home_assistant_state(entity, esphome::optional<std::string>(attr),
-                state_cb([sensor](esphome::StringRef state) {
-                  sensor->publish_state(state.str());
-                }));
-          };
-
-          // Title
-          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_title"),
-              state_cb([](esphome::StringRef state) {
-                std::string val = state.str();
-                id(media_title_sensor).publish_state(val);
-                lv_label_set_text(id(title_label), val.empty() ? "\xe2\x80\x94" : val.c_str());
-              }));
-          // Artist
-          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_artist"),
-              state_cb([](esphome::StringRef state) {
-                std::string val = state.str();
-                id(media_artist_sensor).publish_state(val);
-                lv_label_set_text(id(artist_label), val.c_str());
-                if (val.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
-                else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
-              }));
-          // State
-          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>(""),
-              state_cb([](esphome::StringRef state) {
-                id(media_state_sensor).publish_state(state.str());
-              }));
-          // Entity picture
-          sub_text("entity_picture", id(media_entity_picture_sensor));
-          // Duration
-          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_duration"),
-              state_cb([](esphome::StringRef state) {
-                auto v = esphome::parse_number<float>(state.str());
-                if (v.has_value()) id(media_duration_sensor).publish_state(v.value());
-              }));
-          // Position
-          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_position"),
-              state_cb([](esphome::StringRef state) {
-                auto v = esphome::parse_number<float>(state.str());
-                if (v.has_value()) id(media_position_sensor).publish_state(v.value());
-              }));
-
-          ESP_LOGI("media", "Subscribed to '%s'", entity.c_str());
-
   - id: do_play_pause
     mode: single
     then:
       - homeassistant.service:
           service: media_player.media_play_pause
-          data_template:
-            entity_id: !lambda 'return id(media_player_entity).state;'
+          data:
+            entity_id: ${media_entity}
   - id: do_next_track
     mode: single
     then:
       - homeassistant.service:
           service: media_player.media_next_track
-          data_template:
-            entity_id: !lambda 'return id(media_player_entity).state;'
+          data:
+            entity_id: ${media_entity}
   - id: do_prev_track
     mode: single
     then:
       - homeassistant.service:
           service: media_player.media_previous_track
-          data_template:
-            entity_id: !lambda 'return id(media_player_entity).state;'
+          data:
+            entity_id: ${media_entity}
 
   - id: update_progress
     mode: restart
     then:
       - lambda: |-
+          if (!id(media_duration_sensor).has_state() || !id(media_position_sensor).has_state()) return;
           float dur = id(media_duration_sensor).state;
           float pos = id(media_position_sensor).state;
           if (isnan(dur) || isnan(pos) || dur <= 0) return;
@@ -343,7 +280,6 @@ script:
           if (pct < 0) pct = 0;
           if (pct > 100) pct = 100;
           lv_bar_set_value(id(progress_bar), pct, LV_ANIM_OFF);
-          // Time label
           int pm = (int)pos / 60; int ps = (int)pos % 60;
           int dm = (int)dur / 60; int ds = (int)dur % 60;
           char buf[20];
