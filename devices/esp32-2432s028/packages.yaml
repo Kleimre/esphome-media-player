@@ -19,7 +19,8 @@ substitutions:
   idle_action_default: "Clock"
 
   # Memory-constrained: no PSRAM on this board
-  artwork_image_buffer_size: "32768"
+  artwork_image_buffer_size: "16384"
+  ha_verify_ssl: "false"
 
   # Setup screens (scaled for 320x240)
   setup_content_width: "280"
@@ -39,11 +40,10 @@ substitutions:
 packages:
   # Common
   base: !include ../../common/device/base.yaml
-  web_settings: !include ../../common/addon/web_settings.yaml
+  # web_settings omitted: web_server is too RAM-heavy for ESP32 without PSRAM
 
   # Device-specific
   device: !include device/device.yaml
-  web_activity: !include device/web_activity.yaml
   lvgl: !include device/lvgl.yaml
   fonts: !include assets/fonts.yaml
   icons: !include assets/icons.yaml
