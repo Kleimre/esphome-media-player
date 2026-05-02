@@ -84,7 +84,7 @@ display:
       ignore_strapping_warning: true
     reset_pin: GPIO0
     color_order: BGR
-    invert_colors: true
+    invert_colors: false
     dimensions:
       height: 240
       width: 320
