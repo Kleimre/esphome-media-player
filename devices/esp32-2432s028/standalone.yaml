@@ -306,7 +306,7 @@ online_image:
   - url: "http://placeholder.invalid/placeholder.jpg"
     id: album_art
     format: jpeg
-    type: RGB24
+    type: RGB
     update_interval: never
     on_download_finished:
       then:
