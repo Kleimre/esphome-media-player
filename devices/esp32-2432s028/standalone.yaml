@@ -111,9 +111,6 @@ display:
     dimensions:
       height: 240
       width: 320
-    transform:
-      swap_xy: true
-      mirror_x: true
     update_interval: 1s
     pages:
       - id: now_playing
@@ -124,27 +121,23 @@ display:
           auto DIM   = Color(100, 100, 100);
           auto ACCENT = Color(255, 180, 0);
 
-          // Portrait mode: 240 wide x 320 tall
-          int W = 240;
-          int H = 320;
-
           it.fill(BLACK);
 
-          // Album art centered near top
+          // Album art centered
           if (id(art_loaded)) {
             int iw = id(album_art).get_width();
             int ih = id(album_art).get_height();
-            it.image((W - iw) / 2, 10, id(album_art));
+            it.image((320 - iw) / 2, (240 - ih) / 2, id(album_art));
           }
 
-          // Title below artwork
+          // Title
           std::string title = id(media_title).state;
           if (title.empty()) title = "\xe2\x80\x94";
-          it.printf(12, 195, id(font_title), WHITE, TextAlign::TOP_LEFT, "%s", title.c_str());
+          it.printf(12, 12, id(font_title), WHITE, TextAlign::TOP_LEFT, "%s", title.c_str());
 
           // Artist
           if (!id(media_artist).state.empty()) {
-            it.printf(12, 230, id(font_artist), GREY, TextAlign::TOP_LEFT, "%s", id(media_artist).state.c_str());
+            it.printf(12, 48, id(font_artist), GREY, TextAlign::TOP_LEFT, "%s", id(media_artist).state.c_str());
           }
 
           // Time and progress bar
@@ -156,21 +149,21 @@ display:
             if (pct > 1) pct = 1;
 
             // Progress bar at bottom
-            it.filled_rectangle(0, 316, W, 4, Color(40, 40, 40));
-            it.filled_rectangle(0, 316, (int)(W * pct), 4, WHITE);
+            it.filled_rectangle(0, 236, 320, 4, Color(40, 40, 40));
+            it.filled_rectangle(0, 236, (int)(320 * pct), 4, WHITE);
 
             // Time text
             int pm = (int)pos / 60, ps = (int)pos % 60;
             int dm = (int)dur / 60, ds = (int)dur % 60;
-            it.printf(12, 296, id(font_time), DIM, TextAlign::TOP_LEFT, "%d:%02d / %d:%02d", pm, ps, dm, ds);
+            it.printf(12, 220, id(font_time), DIM, TextAlign::TOP_LEFT, "%d:%02d / %d:%02d", pm, ps, dm, ds);
           }
 
           // Play state indicator
           std::string state = id(media_state).state;
           if (state == "playing") {
-            it.printf(210, 280, id(font_state), ACCENT, TextAlign::TOP_LEFT, "||");
+            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, "||");
           } else if (state == "paused") {
-            it.printf(210, 280, id(font_state), ACCENT, TextAlign::TOP_LEFT, ">");
+            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, ">");
           }
 
 touchscreen:
