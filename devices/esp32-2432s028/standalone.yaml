@@ -73,7 +73,7 @@ light:
 
 display:
   - platform: mipi_spi
-    model: ILI9342
+    model: ILI9341
     id: my_display
     spi_id: display_spi
     cs_pin:
