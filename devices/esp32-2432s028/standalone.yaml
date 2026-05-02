@@ -18,6 +18,8 @@ esp32:
   board: esp32dev
   framework:
     type: esp-idf
+    advanced:
+      sram1_as_iram: true
 
 logger:
   hardware_uart: UART0
@@ -306,7 +308,7 @@ online_image:
     id: album_art
     format: jpeg
     type: RGB565
-    resize: 200x200
+    resize: 160x160
     update_interval: never
     on_download_finished:
       then:
