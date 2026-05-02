@@ -93,11 +93,6 @@ light:
     restore_mode: ALWAYS_ON
     default_transition_length: 0s
     gamma_correct: 0
-    gamma_correct: 0
-    on_turn_on:
-      - light.turn_on:
-          id: backlight
-          brightness: 60%
 
 display:
   - platform: mipi_spi
