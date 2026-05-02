@@ -308,7 +308,6 @@ online_image:
     id: album_art
     format: jpeg
     type: RGB565
-    resize: 160x160
     update_interval: never
     on_download_finished:
       then:
