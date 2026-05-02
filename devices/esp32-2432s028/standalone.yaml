@@ -114,7 +114,6 @@ display:
     transform:
       swap_xy: true
       mirror_x: true
-      mirror_y: false
     update_interval: 1s
     pages:
       - id: now_playing
