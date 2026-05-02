@@ -188,6 +188,18 @@ text:
     icon: "mdi:cast-audio"
     on_value:
       - script.execute: subscribe_media_player
+      - delay: 500ms
+      - if:
+          condition:
+            lambda: |-
+              std::string entity = id(media_player_entity).state;
+              return !entity.empty()
+                  && entity.substr(0, 13) == "media_player."
+                  && esphome::api::global_api_server != nullptr
+                  && esphome::api::global_api_server->is_connected();
+          then:
+            - delay: 200ms
+            - lambda: 'App.safe_reboot();'
 
 
 # -----------------------------------------------------------------------------
@@ -246,42 +258,57 @@ script:
     mode: restart
     then:
       - lambda: |-
+          auto *api = esphome::api::global_api_server;
+          if (api == nullptr) return;
           std::string entity = id(media_player_entity).state;
           if (entity.empty() || !id(ha_connected)) return;
+
+          using state_cb = std::function<void(esphome::StringRef)>;
+
+          auto sub_text = [&](const std::string &attr, esphome::text_sensor::TextSensor *sensor) {
+            api->subscribe_home_assistant_state(entity, esphome::optional<std::string>(attr),
+                state_cb([sensor](esphome::StringRef state) {
+                  sensor->publish_state(state.str());
+                }));
+          };
+
           // Title
-          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_title"),
-            [](const std::string &val) {
-              id(media_title_sensor).publish_state(val);
-              lv_label_set_text(id(title_label), val.empty() ? "\xe2\x80\x94" : val.c_str());
-            });
+          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_title"),
+              state_cb([](esphome::StringRef state) {
+                std::string val = state.str();
+                id(media_title_sensor).publish_state(val);
+                lv_label_set_text(id(title_label), val.empty() ? "\xe2\x80\x94" : val.c_str());
+              }));
           // Artist
-          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_artist"),
-            [](const std::string &val) {
-              id(media_artist_sensor).publish_state(val);
-              lv_label_set_text(id(artist_label), val.c_str());
-              if (val.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
-              else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
-            });
+          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_artist"),
+              state_cb([](esphome::StringRef state) {
+                std::string val = state.str();
+                id(media_artist_sensor).publish_state(val);
+                lv_label_set_text(id(artist_label), val.c_str());
+                if (val.empty()) lv_obj_add_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+                else lv_obj_clear_flag(id(artist_label), LV_OBJ_FLAG_HIDDEN);
+              }));
           // State
-          api::global_api_server->subscribe_home_assistant_state(entity, {},
-            [](const std::string &val) {
-              id(media_state_sensor).publish_state(val);
-            });
+          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>(""),
+              state_cb([](esphome::StringRef state) {
+                id(media_state_sensor).publish_state(state.str());
+              }));
           // Entity picture
-          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("entity_picture"),
-            [](const std::string &val) {
-              id(media_entity_picture_sensor).publish_state(val);
-            });
+          sub_text("entity_picture", id(media_entity_picture_sensor));
           // Duration
-          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_duration"),
-            [](const std::string &val) {
-              if (!val.empty()) id(media_duration_sensor).publish_state(atof(val.c_str()));
-            });
+          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_duration"),
+              state_cb([](esphome::StringRef state) {
+                auto v = esphome::parse_number<float>(state.str());
+                if (v.has_value()) id(media_duration_sensor).publish_state(v.value());
+              }));
           // Position
-          api::global_api_server->subscribe_home_assistant_state(entity, optional<std::string>("media_position"),
-            [](const std::string &val) {
-              if (!val.empty()) id(media_position_sensor).publish_state(atof(val.c_str()));
-            });
+          api->subscribe_home_assistant_state(entity, esphome::optional<std::string>("media_position"),
+              state_cb([](esphome::StringRef state) {
+                auto v = esphome::parse_number<float>(state.str());
+                if (v.has_value()) id(media_position_sensor).publish_state(v.value());
+              }));
+
+          ESP_LOGI("media", "Subscribed to '%s'", entity.c_str());
 
   - id: do_play_pause
     mode: single
