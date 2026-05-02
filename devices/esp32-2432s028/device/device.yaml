@@ -560,7 +560,7 @@ script:
                       std::string path = id(tv_entity_picture_sensor).state;
                       while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ')) path.pop_back();
                       id(last_tv_artwork_url) = (path.substr(0, 7) == "http://" || path.substr(0, 8) == "https://") ? path : (id(ha_base_url) + path);
-                      id(last_tv_artwork_url) = esphome::artwork_image::cap_artwork_url(id(last_tv_artwork_url), 240);
+                      id(last_tv_artwork_url) = esphome::artwork_image::cap_artwork_url(id(last_tv_artwork_url), 100);
                   - delay: 50ms
                   - artwork_image.set_url:
                       id: tv_art_background
@@ -576,8 +576,8 @@ script:
           id(is_tv_idle) = false;
           if (id(web_settings_active)) return;
           lv_obj_set_style_bg_color(id(artwork_bg_panel), lv_color_make(0, 0, 0), 0);
-          lv_obj_set_size(id(album_art_background_widget), 240, 240);
-          lv_obj_set_pos(id(album_art_background_widget), 0, 0);
+          lv_obj_set_size(id(album_art_background_widget), 100, 100);
+          lv_obj_set_pos(id(album_art_background_widget), 110, 70);
       - if:
           condition:
             lambda: 'return id(web_settings_active);'
@@ -634,7 +634,7 @@ script:
                 std::string path = id(media_entity_picture_sensor).state;
                 while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ')) path.pop_back();
                 id(last_artwork_url) = (path.substr(0, 7) == "http://" || path.substr(0, 8) == "https://") ? path : (id(ha_base_url) + path);
-                id(last_artwork_url) = esphome::artwork_image::cap_artwork_url(id(last_artwork_url), 240);
+                id(last_artwork_url) = esphome::artwork_image::cap_artwork_url(id(last_artwork_url), 100);
             - artwork_image.set_url:
                 id: album_art_background
                 url: !lambda 'return id(last_artwork_url);'

@@ -6,8 +6,8 @@ substitutions:
   # Device profile
   screen_width: "320"
   screen_height: "240"
-  artwork_size: "240"
-  artwork_display_size: "240"
+  artwork_size: "100"
+  artwork_display_size: "100"
   clock_cx: "160"
   clock_cy: "120"
   device_slug: "esp32-2432s028"

@@ -50,13 +50,13 @@ lvgl:
             pad_all: 0
             scrollable: false
 
-        # Album artwork background (240×240, left-aligned; music.yaml repositions dynamically)
+        # Album artwork background (100×100, centered; music.yaml repositions dynamically)
         - image:
             id: album_art_background_widget
-            x: 0
-            y: 0
-            width: 240px
-            height: 240px
+            x: 110
+            y: 70
+            width: 100px
+            height: 100px
             src: album_art_background
             opa: 100%
 
