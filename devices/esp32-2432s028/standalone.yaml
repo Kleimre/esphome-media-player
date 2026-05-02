@@ -344,7 +344,7 @@ font:
 # LVGL — Minimal layout
 # -----------------------------------------------------------------------------
 lvgl:
-  buffer_size: 10%
+  buffer_size: 5%
 
   pages:
     - id: main_page
