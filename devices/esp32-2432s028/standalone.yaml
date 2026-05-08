@@ -180,6 +180,8 @@ touchscreen:
       y_min: 340
       y_max: 3850
     on_touch:
+      - light.turn_on:
+          id: backlight
       - lambda: |-
           id(touch_x_start) = touch.x;
           id(touch_y_start) = touch.y;
@@ -251,6 +253,16 @@ text_sensor:
     entity_id: ${media_entity}
     id: media_state
     internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: 'return x == "playing" || x == "paused";'
+          then:
+            - light.turn_on:
+                id: backlight
+          else:
+            - light.turn_off:
+                id: backlight
 
   - platform: homeassistant
     entity_id: ${media_entity}
