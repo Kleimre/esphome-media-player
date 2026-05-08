@@ -256,7 +256,7 @@ text_sensor:
     on_value:
       - if:
           condition:
-            lambda: 'return x == "playing" || x == "paused";'
+            lambda: 'return x == "playing";'
           then:
             - light.turn_on:
                 id: backlight
