@@ -115,6 +115,9 @@ display:
     # ESPHome 2026.10+: the ILI9341 is a native 240x320 portrait panel, so use
     # rotation instead of hand-set landscape dimensions (rejected as "Invalid offsets").
     rotation: 90
+    # The board preset raises the SPI clock to 40MHz; this panel tore into stripes
+    # at that rate, so keep the 10MHz the display ran at before.
+    data_rate: 10MHz
     update_interval: 1s
     pages:
       - id: now_playing
