@@ -2,7 +2,8 @@
 # ESP32-2432S028 (CYD 2.8") — Now-Playing Display
 # =============================================================================
 # Album artwork background with song title, artist, progress bar overlay.
-# Touch: tap = play/pause, swipe left/right = skip track.
+# Touch: bottom row < / play-pause / > , right column + / - for volume,
+#        tap on the artwork = play/pause.
 #
 # Hardware: ESP32-WROOM-32 (320KB RAM, no PSRAM), ILI9341 320x240 TFT,
 #           XPT2046 resistive touch. Display model confirmed ILI9341
@@ -170,9 +171,11 @@ display:
             it.printf(308, 220, id(font_time), DIM, TextAlign::TOP_RIGHT, "%d%%", (int) roundf(id(media_volume).state * 100));
           }
 
-          // Tap zone hints: previous (left) and next (right)
+          // Buttons: bottom row < / play-pause / > , right column + / -
           it.printf(12, 200, id(font_state), DIM, TextAlign::TOP_LEFT, "<");
-          it.printf(296, 200, id(font_state), DIM, TextAlign::TOP_LEFT, ">");
+          it.printf(236, 200, id(font_state), DIM, TextAlign::TOP_LEFT, ">");
+          it.printf(292, 30, id(font_state), DIM, TextAlign::TOP_CENTER, "+");
+          it.printf(292, 140, id(font_state), DIM, TextAlign::TOP_CENTER, "-");
 
           // Play state indicator
           std::string state = id(media_state).state;
@@ -195,7 +198,7 @@ touchscreen:
     transform:
       swap_xy: true
       mirror_x: true
-      mirror_y: false
+      mirror_y: true
     calibration:
       x_min: 280
       x_max: 3850
@@ -211,6 +214,7 @@ touchscreen:
           id(swipe_dx) = 0;
           id(swipe_dy) = 0;
           id(tap_x) = touch.x;
+          id(tap_y) = touch.y;
     on_update:
       - lambda: |-
           for (auto touch: touches) {
@@ -224,24 +228,29 @@ touchscreen:
       - lambda: |-
           int dx = id(swipe_dx);
           int dy = id(swipe_dy);
-          ESP_LOGD("touch", "release: dx=%d dy=%d", dx, dy);
-          if (abs(dx) < 20 && abs(dy) < 20) {
-            // Tap: left third = previous, right third = next, middle = play/pause
-            if (id(tap_x) < 107) {
+          ESP_LOGD("touch", "release: x=%d y=%d dx=%d dy=%d", id(tap_x), id(tap_y), dx, dy);
+          // Only clean taps act; a drag of more than 20px is ignored.
+          if (abs(dx) >= 20 || abs(dy) >= 20) return;
+          int x = id(tap_x);
+          int y = id(tap_y);
+          if (x >= 264) {
+            // Right column: volume
+            if (y < 120) {
+              id(do_volume_up).execute();
+            } else {
+              id(do_volume_down).execute();
+            }
+          } else if (y >= 180) {
+            // Bottom row: transport
+            if (x < 107) {
               id(do_prev_track).execute();
-            } else if (id(tap_x) > 213) {
+            } else if (x >= 200) {
               id(do_next_track).execute();
             } else {
               id(do_play_pause).execute();
             }
-          } else if (dx < -50 && abs(dx) > abs(dy) * 2) {
-            id(do_next_track).execute();
-          } else if (dx > 50 && abs(dx) > abs(dy) * 2) {
-            id(do_prev_track).execute();
-          } else if (dy < -50 && abs(dy) > abs(dx) * 2) {
-            id(do_volume_up).execute();    // swipe up
-          } else if (dy > 50 && abs(dy) > abs(dx) * 2) {
-            id(do_volume_down).execute();  // swipe down
+          } else {
+            id(do_play_pause).execute();
           }
 
 
@@ -271,6 +280,9 @@ globals:
     type: int
     initial_value: '0'
   - id: tap_x
+    type: int
+    initial_value: '0'
+  - id: tap_y
     type: int
     initial_value: '0'
 
@@ -437,4 +449,4 @@ font:
   - file: "gfonts://Roboto"
     id: font_state
     size: 24
-    glyphs: "<>|"
+    glyphs: "<>|+-"
