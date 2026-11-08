@@ -15,6 +15,9 @@
 # Usage — paste into ESPHome dashboard:
 #   substitutions:
 #     media_entity: "media_player.your_player"
+#     # optional: entity that reports media_position/media_duration if the
+#     # main player does not (defaults to media_entity)
+#     position_entity: "media_player.your_player"
 #   packages:
 #     display:
 #       url: https://github.com/Kleimre/esphome-media-player
@@ -30,6 +33,7 @@ substitutions:
   name: "music-dashboard"
   friendly_name: "Music Dashboard"
   media_entity: "media_player.wiim_ma900"
+  position_entity: "media_player.wiim_ma900"
 
 esphome:
   name: ${name}
@@ -141,8 +145,11 @@ display:
           }
 
           // Time and progress bar
-          if (!isnan(id(media_position).state) && !isnan(id(media_duration).state) && id(media_duration).state > 0) {
-            float pos = id(media_position).state;
+          if (!isnan(id(pos_base)) && !isnan(id(media_duration).state) && id(media_duration).state > 0) {
+            float pos = id(pos_base);
+            if (id(media_state).state == "playing") {
+              pos += (millis() - id(pos_base_millis)) / 1000.0f;
+            }
             float dur = id(media_duration).state;
             float pct = pos / dur;
             if (pct < 0) pct = 0;
@@ -219,6 +226,12 @@ globals:
   - id: last_art_url
     type: std::string
     initial_value: '""'
+  - id: pos_base
+    type: float
+    initial_value: 'NAN'
+  - id: pos_base_millis
+    type: uint32_t
+    initial_value: '0'
   - id: touch_x_start
     type: int
     initial_value: '0'
@@ -290,16 +303,22 @@ text_sensor:
 
 sensor:
   - platform: homeassistant
-    entity_id: ${media_entity}
+    entity_id: ${position_entity}
     attribute: media_duration
     id: media_duration
     internal: true
 
   - platform: homeassistant
-    entity_id: ${media_entity}
+    entity_id: ${position_entity}
     attribute: media_position
     id: media_position
     internal: true
+    on_value:
+      - lambda: |-
+          // Remember when this position arrived so the display can
+          // interpolate between (slow) updates from Home Assistant.
+          id(pos_base) = x;
+          id(pos_base_millis) = millis();
 
 
 # -----------------------------------------------------------------------------
