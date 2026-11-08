@@ -165,12 +165,21 @@ display:
             it.printf(12, 220, id(font_time), DIM, TextAlign::TOP_LEFT, "%d:%02d / %d:%02d", pm, ps, dm, ds);
           }
 
+          // Volume readout (swipe up/down changes it)
+          if (!isnan(id(media_volume).state)) {
+            it.printf(308, 220, id(font_time), DIM, TextAlign::TOP_RIGHT, "%d%%", (int) roundf(id(media_volume).state * 100));
+          }
+
+          // Tap zone hints: previous (left) and next (right)
+          it.printf(12, 200, id(font_state), DIM, TextAlign::TOP_LEFT, "<");
+          it.printf(296, 200, id(font_state), DIM, TextAlign::TOP_LEFT, ">");
+
           // Play state indicator
           std::string state = id(media_state).state;
           if (state == "playing") {
-            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, "||");
+            it.printf(160, 200, id(font_state), ACCENT, TextAlign::TOP_CENTER, "||");
           } else if (state == "paused") {
-            it.printf(290, 200, id(font_state), ACCENT, TextAlign::TOP_LEFT, ">");
+            it.printf(160, 200, id(font_state), ACCENT, TextAlign::TOP_CENTER, ">");
           }
 
 touchscreen:
@@ -185,7 +194,7 @@ touchscreen:
     # axis is X; without this swap horizontal swipes are seen as vertical.
     transform:
       swap_xy: true
-      mirror_x: false
+      mirror_x: true
       mirror_y: false
     calibration:
       x_min: 280
@@ -201,6 +210,7 @@ touchscreen:
           // displacement from it while the finger moves.
           id(swipe_dx) = 0;
           id(swipe_dy) = 0;
+          id(tap_x) = touch.x;
     on_update:
       - lambda: |-
           for (auto touch: touches) {
@@ -216,11 +226,22 @@ touchscreen:
           int dy = id(swipe_dy);
           ESP_LOGD("touch", "release: dx=%d dy=%d", dx, dy);
           if (abs(dx) < 20 && abs(dy) < 20) {
-            id(do_play_pause).execute();
+            // Tap: left third = previous, right third = next, middle = play/pause
+            if (id(tap_x) < 107) {
+              id(do_prev_track).execute();
+            } else if (id(tap_x) > 213) {
+              id(do_next_track).execute();
+            } else {
+              id(do_play_pause).execute();
+            }
           } else if (dx < -50 && abs(dx) > abs(dy) * 2) {
             id(do_next_track).execute();
           } else if (dx > 50 && abs(dx) > abs(dy) * 2) {
             id(do_prev_track).execute();
+          } else if (dy < -50 && abs(dy) > abs(dx) * 2) {
+            id(do_volume_up).execute();    // swipe up
+          } else if (dy > 50 && abs(dy) > abs(dx) * 2) {
+            id(do_volume_down).execute();  // swipe down
           }
 
 
@@ -247,6 +268,9 @@ globals:
     type: int
     initial_value: '0'
   - id: swipe_dy
+    type: int
+    initial_value: '0'
+  - id: tap_x
     type: int
     initial_value: '0'
 
@@ -308,6 +332,12 @@ text_sensor:
 
 sensor:
   - platform: homeassistant
+    entity_id: ${media_entity}
+    attribute: volume_level
+    id: media_volume
+    internal: true
+
+  - platform: homeassistant
     entity_id: ${position_entity}
     attribute: media_duration
     id: media_duration
@@ -351,6 +381,20 @@ script:
           service: media_player.media_previous_track
           data:
             entity_id: ${media_entity}
+  - id: do_volume_up
+    mode: single
+    then:
+      - homeassistant.service:
+          service: media_player.volume_up
+          data:
+            entity_id: ${media_entity}
+  - id: do_volume_down
+    mode: single
+    then:
+      - homeassistant.service:
+          service: media_player.volume_down
+          data:
+            entity_id: ${media_entity}
 
 
 # -----------------------------------------------------------------------------
@@ -389,8 +433,8 @@ font:
   - file: "gfonts://Roboto"
     id: font_time
     size: 14
-    glyphs: " 0123456789:/-"
+    glyphs: " 0123456789:/-%"
   - file: "gfonts://Roboto"
     id: font_state
     size: 24
-    glyphs: ">|"
+    glyphs: "<>|"
