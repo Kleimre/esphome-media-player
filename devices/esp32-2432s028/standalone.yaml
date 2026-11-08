@@ -100,7 +100,7 @@ light:
 
 display:
   - platform: mipi_spi
-    model: ILI9341
+    model: ESP32-2432S028
     id: my_display
     spi_id: display_spi
     cs_pin:
@@ -112,9 +112,9 @@ display:
     reset_pin: GPIO0
     color_order: RGB
     invert_colors: false
-    dimensions:
-      height: 240
-      width: 320
+    # ESPHome 2026.10+: the ILI9341 is a native 240x320 portrait panel, so use
+    # rotation instead of hand-set landscape dimensions (rejected as "Invalid offsets").
+    rotation: 90
     update_interval: 1s
     pages:
       - id: now_playing
