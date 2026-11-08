@@ -220,10 +220,11 @@ touchscreen:
           id(tap_y) = touch.y;
           // Immediate visual feedback: highlight the button under the finger.
           int zone = 2;  // default: play/pause (artwork area)
-          if (touch.x >= 264) {
-            zone = (touch.y < 120) ? 4 : 5;
-          } else if (touch.y >= 180) {
+          if (touch.y >= 180) {
+            // Bottom row spans the full width so ">" cannot spill into the volume column
             zone = (touch.x < 107) ? 1 : (touch.x >= 200 ? 3 : 2);
+          } else if (touch.x >= 264) {
+            zone = (touch.y < 120) ? 4 : 5;
           }
           id(pressed_zone) = zone;
           id(pressed_until) = millis() + 500;
@@ -246,21 +247,21 @@ touchscreen:
           if (abs(dx) >= 20 || abs(dy) >= 20) return;
           int x = id(tap_x);
           int y = id(tap_y);
-          if (x >= 264) {
-            // Right column: volume
-            if (y < 120) {
-              id(do_volume_up).execute();
-            } else {
-              id(do_volume_down).execute();
-            }
-          } else if (y >= 180) {
-            // Bottom row: transport
+          if (y >= 180) {
+            // Bottom row (full width): transport
             if (x < 107) {
               id(do_prev_track).execute();
             } else if (x >= 200) {
               id(do_next_track).execute();
             } else {
               id(do_play_pause).execute();
+            }
+          } else if (x >= 264) {
+            // Right column above the bottom row: volume
+            if (y < 120) {
+              id(do_volume_up).execute();
+            } else {
+              id(do_volume_down).execute();
             }
           } else {
             id(do_play_pause).execute();
