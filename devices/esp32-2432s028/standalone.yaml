@@ -172,17 +172,20 @@ display:
           }
 
           // Buttons: bottom row < / play-pause / > , right column + / -
-          it.printf(12, 200, id(font_state), DIM, TextAlign::TOP_LEFT, "<");
-          it.printf(236, 200, id(font_state), DIM, TextAlign::TOP_LEFT, ">");
-          it.printf(292, 30, id(font_state), DIM, TextAlign::TOP_CENTER, "+");
-          it.printf(292, 140, id(font_state), DIM, TextAlign::TOP_CENTER, "-");
+          // The button under the finger lights up for ~500ms (pressed_zone 1..5).
+          int pz = (millis() < id(pressed_until)) ? id(pressed_zone) : 0;
+          it.printf(12, 200, id(font_state), pz == 1 ? ACCENT : DIM, TextAlign::TOP_LEFT, "<");
+          it.printf(236, 200, id(font_state), pz == 3 ? ACCENT : DIM, TextAlign::TOP_LEFT, ">");
+          it.printf(292, 30, id(font_state), pz == 4 ? ACCENT : DIM, TextAlign::TOP_CENTER, "+");
+          it.printf(292, 140, id(font_state), pz == 5 ? ACCENT : DIM, TextAlign::TOP_CENTER, "-");
 
-          // Play state indicator
+          // Play state indicator (white while pressed)
           std::string state = id(media_state).state;
+          auto play_color = (pz == 2) ? WHITE : ACCENT;
           if (state == "playing") {
-            it.printf(160, 200, id(font_state), ACCENT, TextAlign::TOP_CENTER, "||");
+            it.printf(160, 200, id(font_state), play_color, TextAlign::TOP_CENTER, "||");
           } else if (state == "paused") {
-            it.printf(160, 200, id(font_state), ACCENT, TextAlign::TOP_CENTER, ">");
+            it.printf(160, 200, id(font_state), play_color, TextAlign::TOP_CENTER, ">");
           }
 
 touchscreen:
@@ -215,6 +218,16 @@ touchscreen:
           id(swipe_dy) = 0;
           id(tap_x) = touch.x;
           id(tap_y) = touch.y;
+          // Immediate visual feedback: highlight the button under the finger.
+          int zone = 2;  // default: play/pause (artwork area)
+          if (touch.x >= 264) {
+            zone = (touch.y < 120) ? 4 : 5;
+          } else if (touch.y >= 180) {
+            zone = (touch.x < 107) ? 1 : (touch.x >= 200 ? 3 : 2);
+          }
+          id(pressed_zone) = zone;
+          id(pressed_until) = millis() + 500;
+      - component.update: my_display
     on_update:
       - lambda: |-
           for (auto touch: touches) {
@@ -252,6 +265,9 @@ touchscreen:
           } else {
             id(do_play_pause).execute();
           }
+      - delay: 500ms
+      - lambda: 'id(pressed_zone) = 0;'
+      - component.update: my_display
 
 
 # -----------------------------------------------------------------------------
@@ -284,6 +300,12 @@ globals:
     initial_value: '0'
   - id: tap_y
     type: int
+    initial_value: '0'
+  - id: pressed_zone
+    type: int
+    initial_value: '0'
+  - id: pressed_until
+    type: uint32_t
     initial_value: '0'
 
 
