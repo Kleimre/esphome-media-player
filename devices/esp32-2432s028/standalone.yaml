@@ -190,20 +190,25 @@ touchscreen:
       - light.turn_on:
           id: backlight
       - lambda: |-
-          id(touch_x_start) = touch.x;
-          id(touch_y_start) = touch.y;
+          // New touch: reset the swipe tracker. The touchscreen component keeps
+          // the origin of each point in x_org/y_org, so track the largest
+          // displacement from it while the finger moves.
+          id(swipe_dx) = 0;
+          id(swipe_dy) = 0;
     on_update:
       - lambda: |-
           for (auto touch: touches) {
-            if (touch.state <= 2) {
-              id(touch_x_end) = touch.x;
-              id(touch_y_end) = touch.y;
-            }
+            if (touch.state == 0) continue;  // fully released point, no position
+            int dx = (int) touch.x - (int) touch.x_org;
+            int dy = (int) touch.y - (int) touch.y_org;
+            if (abs(dx) > abs(id(swipe_dx))) id(swipe_dx) = dx;
+            if (abs(dy) > abs(id(swipe_dy))) id(swipe_dy) = dy;
           }
     on_release:
       - lambda: |-
-          int dx = id(touch_x_end) - id(touch_x_start);
-          int dy = id(touch_y_end) - id(touch_y_start);
+          int dx = id(swipe_dx);
+          int dy = id(swipe_dy);
+          ESP_LOGD("touch", "release: dx=%d dy=%d", dx, dy);
           if (abs(dx) < 20 && abs(dy) < 20) {
             id(do_play_pause).execute();
           } else if (dx < -50 && abs(dx) > abs(dy) * 2) {
@@ -232,16 +237,10 @@ globals:
   - id: pos_base_millis
     type: uint32_t
     initial_value: '0'
-  - id: touch_x_start
+  - id: swipe_dx
     type: int
     initial_value: '0'
-  - id: touch_y_start
-    type: int
-    initial_value: '0'
-  - id: touch_x_end
-    type: int
-    initial_value: '0'
-  - id: touch_y_end
+  - id: swipe_dy
     type: int
     initial_value: '0'
 
