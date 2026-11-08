@@ -115,8 +115,6 @@ display:
     reset_pin: GPIO0
     color_order: RGB
     invert_colors: false
-    # Keep the 10MHz SPI clock the display ran at before (preset default is 40MHz).
-    data_rate: 10MHz
     update_interval: 1s
     pages:
       - id: now_playing
